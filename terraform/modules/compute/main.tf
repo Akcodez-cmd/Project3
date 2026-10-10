@@ -29,9 +29,38 @@ resource "aws_instance" "web" {
   instance_type               = var.instance_type
   subnet_id                   = var.public_subnet_id
   vpc_security_group_ids      = [aws_security_group.web.id]
-  associate_public_ip_address = true
+  associate_public_ip_address = false
+
+  user_data = <<-EOF
+    #!/bin/bash
+    dnf install -y nginx
+    cat > /usr/share/nginx/html/index.html <<'HTML'
+    <!DOCTYPE html>
+    <html>
+      <head><title>Project 3</title></head>
+      <body>
+        <h1>Project 3 - AWS Infrastructure Automation</h1>
+        <p>Deployed using Terraform and GitHub Actions.</p>
+      </body>
+    </html>
+    HTML
+    systemctl enable --now nginx
+  EOF
 
   tags = {
     Name = "${var.project_name}-web"
   }
+}
+
+resource "aws_eip" "web" {
+  domain = "vpc"
+
+  tags = {
+    Name = "${var.project_name}-web-eip"
+  }
+}
+
+resource "aws_eip_association" "web" {
+  allocation_id = aws_eip.web.id
+  instance_id   = aws_instance.web.id
 }
