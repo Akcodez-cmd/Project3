@@ -14,9 +14,14 @@ permissions:
   contents: read
   id-token: write
 
+env:
+  AWS_REGION: ap-south-1
+  TF_DIR: terraform
+  TF_IN_AUTOMATION: "true"
+
 jobs:
-  validate:
-    name: Format and Validate
+  plan:
+    name: Validate and Plan
     runs-on: ubuntu-latest
 
     steps:
@@ -27,16 +32,58 @@ jobs:
         uses: hashicorp/setup-terraform@v3
 
       - name: Check formatting
-        run: terraform -chdir=terraform fmt -check -recursive
+        run: terraform -chdir=${TF_DIR} fmt -check -recursive
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ap-south-1
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Initialize Terraform
-        run: terraform -chdir=terraform init -input=false
+        run: terraform -chdir=${TF_DIR} init -input=false
 
       - name: Validate Terraform
-        run: terraform -chdir=terraform validate
+        run: terraform -chdir=${TF_DIR} validate
+
+      - name: Generate Terraform plan
+        run: terraform -chdir=${TF_DIR} plan -input=false -out=tfplan
+
+      - name: Upload Terraform plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan
+          path: terraform/tfplan
+          if-no-files-found: error
+          retention-days: 1
+
+  apply:
+    name: Apply Approved Plan
+    needs: plan
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Initialize Terraform
+        run: terraform -chdir=${TF_DIR} init -input=false
+
+      - name: Download Terraform plan
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-plan
+          path: terraform/
+
+      - name: Apply approved plan
+        run: terraform -chdir=${TF_DIR} apply -input=false tfplan
