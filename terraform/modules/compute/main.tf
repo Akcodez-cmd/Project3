@@ -24,12 +24,42 @@ resource "aws_security_group" "web" {
   }
 }
 
+
+resource "aws_iam_role" "ec2" {
+  name = "${var.project_name}-ec2-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+
+  tags = {
+    Name = "${var.project_name}-ec2-role"
+  }
+}
+
+resource "aws_iam_instance_profile" "ec2" {
+  name = "${var.project_name}-ec2-profile"
+  role = aws_iam_role.ec2.name
+}
+
+
+
 resource "aws_instance" "web" {
   ami                         = var.ami_id
   instance_type               = var.instance_type
   subnet_id                   = var.public_subnet_id
   vpc_security_group_ids      = [aws_security_group.web.id]
   associate_public_ip_address = false
+  iam_instance_profile        = aws_iam_instance_profile.ec2.name
 
   user_data = <<-EOF
     #!/bin/bash
